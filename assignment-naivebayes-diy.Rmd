@@ -1,0 +1,110 @@
+---
+title: "Assigment - Naive Bayes DIY"
+author:
+  - Minh Dung Pham- Author
+  - name reviewer here - Reviewer
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+   html_notebook:
+    toc: true
+    toc_depth: 2
+---
+```{r message=TRUE, warning=TRUE, include=FALSE}
+library(tidyverse)
+library(tm)
+library(caret)
+library(wordcloud)
+library(e1071)
+library(readr)
+```
+## Business Understanding 
+In this case we need to use NB to detect the hate speech from data which is collected from REDDIT.
+
+## Data Understanding
+First we need to import data from github.
+```{r,message=FALSE}
+url <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/NB-reddit-hate-speech.csv"
+NBdataraw <- read_csv(url)
+head(NBdataraw,5)
+```
+We only need the text and the hate speed idc therefore we will remove the unneeded. WE also need to change the hate_speech_idx into factor which only contains "normal" and "hate". 
+```{r}
+NBdata<-NBdataraw[-c(1,4)]
+NBdata$hate_speech_idx<- ifelse(NBdata$hate_speech_idx == "n/a", "normal", "hate")
+NBdata$hate_speech_idx <- NBdata$hate_speech_idx %>% factor
+class(NBdata$hate_speech_idx)
+```
+Lastly, I create the world could for visualization to find out which is most occur word.
+```{r, warning=FALSE}
+hate <-  filter(NBdata,hate_speech_idx == "hate")
+normal <- filter(NBdata,hate_speech_idx == "normal")
+
+wordcloud(hate$text, max.words = 25, scale = c(4, 0.8), colors= c("indianred1","indianred2","indianred3","indianred"))
+wordcloud(normal$text, max.words = 25, scale = c(4, 0.8), colors= c("lightsteelblue1","lightsteelblue2","lightsteelblue3","lightsteelblue"))
+```
+## Data Preparation
+In this step, I will crease a corpus which is collection of text document.
+```{r}
+rawCorpus <- Corpus(VectorSource(NBdata$text))
+inspect(rawCorpus[1:3])
+```
+
+
+Then I eliminate the unneeded items like number, punctuation, common words and white space. I also change all the word to lowercase.we can see the different between the raw and the cleaned version
+```{r,warning=FALSE}
+rawCorpus <- Corpus(VectorSource(NBdata$text))
+cleanCorpus <- rawCorpus %>% tm_map(tolower) %>% tm_map(removeNumbers)
+cleanCorpus <- cleanCorpus %>% tm_map(tolower) %>% tm_map(removeWords, stopwords()) %>% tm_map(removePunctuation)
+cleanCorpus <- cleanCorpus %>% tm_map(stripWhitespace)
+tibble(Raw = rawCorpus$content[1:3], Clean = cleanCorpus$content[1:3])
+```
+Now, I will transform the data into matrix.
+```{r,warning = FALSE}
+cleanDTM <- cleanCorpus %>% DocumentTermMatrix
+inspect(cleanDTM)
+
+```
+Then I split the data into test set and train set with the proportion 75-25.
+```{r,warning = FALSE}
+set.seed(1234)
+trainIndex1 <- createDataPartition(NBdata$hate_speech_idx, p = .75, 
+                                  list = FALSE, 
+                                  times = 1,)
+head(trainIndex,10)
+# Apply split indices to DF
+trainDF <- NBdata[trainIndex1, ]
+
+testDF <- NBdata[-trainIndex1, ]
+# Apply split indices to Corpus
+trainCorpus <- cleanCorpus[trainIndex1]
+testCorpus <- cleanCorpus[-trainIndex1]
+
+# Apply split indices to DTM
+trainDTM <- cleanDTM[trainIndex1, ]
+testDTM <- cleanDTM[-trainIndex1, ]
+```
+After that , I eliminate the low frequencies word. Finally, I  will transform the counts into a factor to find out whether the word appears in the document or not. We’ll first build our own function for this and then apply it to each column in the DTM.
+```{r,warning = FALSE}
+freqWords <- trainDTM %>% findFreqTerms(10)
+trainDTM <-  DocumentTermMatrix(trainCorpus, list(dictionary = freqWords))
+testDTM <-  DocumentTermMatrix(testCorpus, list(dictionary = freqWords))
+
+convert_counts <- function(x) {
+  x <- ifelse(x > 0, 1, 0) %>% factor(levels = c(0,1), labels = c("No", "Yes"))
+}
+
+nColsDTM <- dim(trainDTM)[2]
+trainDTM <- apply(trainDTM, MARGIN = 2, convert_counts)
+testDTM <- apply(testDTM, MARGIN = 2, convert_counts)
+
+head(trainDTM[,1:10])
+```
+## Modeling and Evaluation
+I will start training our model and evaluate against our test dataset using NB and Use a confusion matrix we can analyze the performance of our model.
+```{r}
+nbayesModel <-  naiveBayes(trainDTM, trainDF$hate_speech_idx, laplace = 1)
+
+predVec <- predict(nbayesModel, testDTM)
+confusionMatrix(predVec, testDF$hate_speech_idx, positive = "hate", dnn = c("Prediction", "True"))
+```
+The accuracy is only 64% which means it can be improved.
