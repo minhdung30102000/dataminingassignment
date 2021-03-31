@@ -1,0 +1,87 @@
+---
+title: "Assigment - kNN DIY"
+author:
+- Minh Dung Pham- Author
+- name reviewer here - Reviewer
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+---
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(class)
+library(caret)
+library(tidyverse)
+library(forcats)
+```
+## Business case
+The data contain the classification of blood donor.There are 12 factors which affect the classification. The purpose of this project is train and detect if a person is suitable for the blood donor or not.
+
+## Data understanding 
+First we need to import the data set and summarize some baisc information about the data set.
+```{r, warning=FALSE, message=FALSE}
+
+urllink <- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/KNN-hcvdat0.csv"
+dataraw <- read_csv(urllink)
+str(dataraw)
+```
+
+## Data Preparation
+Firstly, I will remove the unneeded columns which are "x1" and "sex" because they are not suitable with the model we are going to use. Secondly, there are some rows with missing value, I will remove those rows.We will have the usable data for the project.
+```{r}
+dataneed <- dataraw[-c(1,4)]
+cleanDF<-na.omit(dataneed)
+head(cleanDF)
+```
+The column contain the outcome we want to predict is "Category". We will look at the count and proportion of the element in this column.
+```{r}
+cntDiag <- table(cleanDF$Category)
+propDiag <- round(prop.table(cntDiag) * 100 , digits = 1)
+cntDiag
+propDiag
+```
+Right now, R still detects all the "category" as type character which means the "0=BLood Donor" in row 1 2 are being detected as 2 different value. We need change all the variable into factor for the model later.
+
+```{r, warning=FALSE}
+cleanDF$Category <- cleanDF$Category %>% factor
+cleanDF$Category <- fct_collapse(cleanDF$Category, donor = c("0=Blood Donor"), suspectdonor = c("0s=suspect Blood Donor"), 
+                                 hepatitis = c("1=Hepatitis", "2=Fibrosis", "3=Cirrhosis"))
+head(cleanDF,5)
+```
+Take a deeper at the others category which affect the classification. 
+```{r}
+summary(cleanDF)
+```
+We can easily see the the range between variable is large. This problem can affect the result of our model. In order to avoid mistake, we will apply normalization to resale all features to a standard range of values.
+
+```{r}
+data_norm <- function(x) {((x - min(x)) / (max(x) - min(x)))}
+cleanDF_n <- as.data.frame(lapply(cleanDF[2:12], normalize))
+
+summary(cleanDF_n)
+```
+Now I will divide the data set into 2 test and training set with the proportion is 75% for train and 25% for test. I also We’ll create separate training and tests sets for the labels
+```{r}
+train<- cleanDF_n[1:441,]
+test<-cleanDF_n[442:589,]
+train_labels <- cleanDF[1:441, 1]
+test_labels <- cleanDF[442:589, 1]
+```
+## Modeling and Evaluation
+ I use the knn model to test and give the prediction.Now that we have a set of predicted labels we can compare these with the actual labels. A diffusion table shows how well the model performed.
+```{r,warning=FALSE}
+cleanDF_test_pred <- knn(train = as.matrix(train), test = test, cl = as.matrix(train_labels), k = 10)
+head(cleanDF_test_pred)
+confusionMatrix(cleanDF_test_pred, test_labels[[1]], positive = NULL, dnn = c("Prediction", "True"))
+```
+The accuracy is only 57% which the model is not good enough.Especially, this is related to the health problem.In this model, For better result, I think the a bigger data set would bring better result. 
