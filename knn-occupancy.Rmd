@@ -1,0 +1,81 @@
+---
+title: "Assigment - kNN DIY"
+author:
+- Minh Dung Pham- Author
+
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+  html_document:
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+---
+```{r, warning=FALSE,message=FALSE}
+library(tidyverse)
+library(googlesheets4)
+library(class)
+library(caret)
+library(tidyverse)
+library(forcats)
+```
+
+## Business case
+Accurate occupancy detection of an office room from light, temperature, humidity and CO2 measurements using statistical learning models
+
+## Data Understanding
+First Import the data from github and use str() to have some basic information about the data
+```{r,message=FALSE}
+urllink2<- "https://raw.githubusercontent.com/HAN-M3DM-Data-Mining/assignments/master/datasets/KNN-occupancy.csv"
+dataraw2 <- read_csv(urllink2)
+str(dataraw2)
+```
+## Data Preparation
+First I will remove the date because I will not use it for the train model
+```{r}
+cleanDF2 <- dataraw2[-1]
+head(cleanDF2,5)
+```
+The variable named "occupancy" contains the outcomes we would like to predict ‘1’ for ‘occupied’ and ‘0’ for ‘not occupied’.Let take a look at the count and proportion of 2 outcome  in this variable
+```{r}
+cntDiag2 <- table(dataraw2$Occupancy)
+propDiag2 <- round(prop.table(cntDiag2) * 100 , digits = 1)
+cntDiag2
+propDiag2
+```
+For the training model, I will change the value in "occupancy" in factor with "0" for ‘1’ for ‘occupied’ and ‘0’ for ‘not occupied.’
+```{r}
+cleanDF2$Occupancy <- factor(cleanDF2$Occupancy, levels = c("0", "1"), labels = c("not occupied", "occupied")) %>% relevel("occupied")
+cleanDF3<-cleanDF2[,c(6,1,2,3,4,5)]
+head(cleanDF3)
+```
+Take a deeper at the others category which affect the classification. 
+```{r}
+summary(cleanDF3)
+```
+We can easily see the the range between variable is large. This problem can affect the result of our model. In order to avoid mistake, we will apply normalization to resale all features to a standard range of values.
+```{r}
+data_norm <- function(x) {((x - min(x)) / (max(x) - min(x)))}
+cleanDF_n3 <- as.data.frame(lapply(cleanDF3[2:6], normalize))
+summary(cleanDF_n3)
+```
+Now I will divide the data set into 2 test and training set with the proportion is 60% for train and 40% for test. I also We’ll create separate training and tests sets for the "occupancy"
+```{r}
+train3<- cleanDF_n3[1:4485,]
+test3<-cleanDF_n3[4486:143,]
+train_labels3 <- cleanDF3[1:4485, 1]
+test_labels3 <- cleanDF3[4486:143, 1]
+```
+## Modeling and Evaluation
+ I use the knn model to test and give the prediction.Now that we have a set of predicted labels we can compare these with the actual labels. A diffusion table shows how well the model performed.
+```{r,warning=FALSE}
+cleanDF_test_pred3 <- knn(train = as.matrix(train3), test = test3, cl = as.matrix(train_labels3), k = 10)
+head(cleanDF_test_pred3)
+confusionMatrix(cleanDF_test_pred3, test_labels3[[1]], positive = NULL, dnn = c("Prediction", "True"))
+```
+The accuracy of this models 99.1 % which means it is a good model 
